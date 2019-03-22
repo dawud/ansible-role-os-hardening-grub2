@@ -1,0 +1,119 @@
+---
+- name: Check for check/audit mode
+  command: /bin/true
+  register: noop_result
+  changed_when: False
+  tags:
+    - always
+
+- name: Check to see if we are booting with EFI or UEFI
+  set_fact:
+    booted_with_efi: "{{ ansible_mounts | selectattr('mount', 'equalto', '/boot/efi') | list | length > 0 }}"
+  tags:
+    - always
+
+- name: Set facts
+  set_fact:
+    check_mode: "{{ noop_result is skipped }}"
+    grub_config_dir: "{{ booted_with_efi | ternary(grub_conf_dir_efi, grub_conf_dir) }}"
+  tags:
+    - always
+
+- name: Check if GRUB2 is present on the remote node
+  stat:
+    path: "{{ grub_update_cmd.split(' ')[0] }}"
+  register: grub_update_binary
+  tags:
+    - always
+
+- name: Set a GRUB2 password for single-user/maintenance modes
+  no_log: 'True'
+  block:
+    - name: Generate hash
+      grub2_hash:
+        iteration_count: 200000
+        salt: 256
+        passphrase: "{{ security_grub_password }}"
+      register: hash
+      changed_when: 'False'
+    - name: Set password
+      lineinfile:
+        path: "{{ grub_config_dir }}/user.cfg"
+        regexp: '^GRUB2_PASSWORD=.*'
+        line: "GRUB2_PASSWORD={{ hash.line }}"
+        state: present
+      notify:
+        - update grub config
+  when:
+    - security_require_grub_authentication | bool
+  tags:
+    - auth
+    - high
+    - V-71961
+    - V-71963
+
+- name: Set classes in GRUB2 configuration file
+  lineinfile:
+    path: "{{ grub_linux_file }}"
+    regexp: '^CLASS=.*'
+    line: 'CLASS="--class gnu-linux --class gnu --class os --unrestricted"'
+    state: present
+    backrefs: yes
+  notify:
+    - update grub config
+  tags:
+    - auth
+    - high
+    - V-71961
+    - V-71963
+
+# FIXME: regexp
+- name: Ensure security options are enabled in /etc/default/grub
+  replace:
+    path: /etc/default/grub
+    regexp: '^(GRUB_CMDLINE_LINUX=")([^"]*)(?!{{ item }})(.*)$'
+    replace: '\1\2 {{ item }} \3'
+    backup: 'yes'
+    owner: root
+    group: root
+    mode: 0644
+    seuser: system_u
+    serole: object_r
+    setype: bootloader_etc_t
+    selevel: s0
+  with_items:
+    - 'security=selinux'
+    - 'selinux=1'
+    - 'audit=1'
+    - 'audit_backlog_limit=8192'
+    - 'slub_debug=P'
+    - 'page_poison=1'
+    - 'vsyscall=none'
+    - 'rd.shell=0'
+  notify:
+    - update grub config
+  tags:
+    - enable_selinux_bootloader
+    - medium_severity
+    - restrict_strategy
+    - low_complexity
+    - low_disruption
+    - CCE-26961-3
+    - NIST-800-53-AC-3
+    - NIST-800-53-AC-3(3)
+    - NIST-800-53-AC-3(4)
+    - NIST-800-53-AC-4
+    - NIST-800-53-AC-6
+    - NIST-800-53-AU-9
+    - NIST-800-53-SI-6(a)
+    - NIST-800-171-3.1.2
+    - NIST-800-171-3.7.2
+
+# TODO: implement and test
+# - name: Check grub.conf for audit enforcing
+#   lineinfile:
+#     path: "{{ grub_cfg_path }}"
+#     state: present
+#     regexp: '^(linuxefi.*)( quiet)(.*)$'
+#     line: '\1\2 audit=1\3'
+#     validate: 'grub2-script-check'

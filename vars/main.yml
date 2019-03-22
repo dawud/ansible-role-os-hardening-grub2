@@ -1,0 +1,8 @@
+---
+# vars file for grub2
+# grub main linux configuration
+grub_linux_file: /etc/grub.d/10_linux
+grub_conf_dir: '/boot/grub2'
+grub_conf_dir_efi: "/boot/efi/EFI/{{ ansible_distribution | lower | replace(' ', '') }}"
+# Commands
+grub_update_cmd: "/usr/sbin/grub2-mkconfig -o {{ grub_config_dir }}/grub.cfg"

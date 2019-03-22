@@ -1,0 +1,10 @@
+---
+# defaults file for grub2
+# Update the grub configuration.
+security_enable_grub_update: 'yes'
+# Require authentication in GRUB to boot into single-user or maintenance modes.
+security_require_grub_authentication: 'no'                   # V-71961 / V-71963
+# Password should be stored in a vault when
+# security_require_grub_authentication is set to 'yes'
+#security_grub_password: "{{ vault_security_grub_password }}"
+security_grub_password: ""
